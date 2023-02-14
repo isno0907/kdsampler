@@ -161,6 +161,7 @@ class KDSampler2DRecognizer3D(BaseRecognizer):
                  use_sampler=False,
                  loss='kl',
                  ce_loss=False,
+                 loss_lambda=1.0,
                  simple=False,
                  embed_dims=768,
                  num_heads=12,
@@ -191,6 +192,7 @@ class KDSampler2DRecognizer3D(BaseRecognizer):
         else:
             self.loss = PairwiseLoss(total_segment=num_segments, sort=loss, gamma=gamma)
         self.ce_loss = ce_loss
+        self.loss_lambda = loss_lambda
         self.loss_name = loss
         self.num_segments = num_segments
         self.num_test_segments = num_test_segments
@@ -221,10 +223,11 @@ class KDSampler2DRecognizer3D(BaseRecognizer):
     def sample_forward(self, x_s, num_segs, test_mode=False):
         """Defines getting sample distribution"""
         x_s = torch.flatten(self.avg_pool(x_s), 1) # [N * num_segs, in_channels]
-        x_s = x_s.reshape(-1, num_segs, self.input_dims) # [N, num_segs, embed_dims]
+        # x_s = x_s.reshape(-1, num_segs, self.input_dims) # [N, num_segs, embed_dims]
         if self.dropout is not None:
             x_s = self.dropout(x_s)
         logit = self.sample_fc(x_s).squeeze(-1) # [N, num_segs]
+        logit = logit.reshape(-1, num_segs)
         if not self.return_logit:
             logit = torch.sigmoid(logit)
         if self.softmax:
@@ -239,11 +242,9 @@ class KDSampler2DRecognizer3D(BaseRecognizer):
         """ 
         self.backbone.eval()
         B, N, C, T, H, W = imgs.shape #imgs [B, N, C, T, H, W]
-        # imgs = imgs.reshape(B * N * T, C, H, W) #imgs [B * N * T, C, H, W]
         imgs = rearrange(imgs, 'b n c t h w -> (b n) c t h w')
         imgs = imgs.transpose(1, 2).contiguous()
         imgs = imgs.reshape((-1,) + (imgs.shape[-3:]))
-        # imgs = rearrange(imgs, 'b t c h w -> (b t) c h w')
         # if self.backbone.__class__.__name__ == 'ResNet3dSlowOnly':
         #     x = False
         if hasattr(self, 'sampler'):
@@ -259,15 +260,8 @@ class KDSampler2DRecognizer3D(BaseRecognizer):
         cls_score = self.cls_head(x) # cls_score [B * T, num_classes]
         if not self.return_logit:
             cls_score = cls_score.softmax(-1)
-        # cls_score  = rearrange(cls_score, '(b t) c -> b t c', b = B, t = T)
         cls_score = cls_score.reshape(B, T, -1) # [B, T, num_classes]
         gt_labels = labels.squeeze()
-        #여기 구현좀 다시 손보자
-        # gt_logit = []
-        # for i in range(T):
-        #     tmp = cls_score[:,i,:].clone() # [B, num_classes]
-        #     gt_logit.append(tmp[range(B), gt_labels])
-        # gt_logit = torch.stack(gt_logit, -1).to(cls_score.device) # [B, T]
         gt_logit = cls_score[range(B),:,gt_labels] # [B, T]
         if self.softmax:
             gt_logit = F.softmax(gt_logit/self.temperature, -1)
@@ -280,14 +274,17 @@ class KDSampler2DRecognizer3D(BaseRecognizer):
             # gt_logit[gt_logit < 0.3] = 0.0
         # sampler dist
         logit = self.sample_forward(x_s, T) # [N, num_segs]
-        losses[f'{self.loss_name}_loss'] = self.loss(logit, gt_logit)
+        losses[f'{self.loss_name}_loss'] = self.loss(logit, gt_logit) * self.loss_lambda
+        losses['logit_min'] = logit.min(-1)[0].mean(0)
+        losses['logit_max'] = logit.max(-1)[0].mean(0)
         if self.ce_loss:
             x_s = torch.flatten(self.avg_pool(x_s), 1) # [N * num_segs, in_channels]
-            x_s = x_s.reshape(-1, num_segs, self.input_dims) # [N, num_segs, embed_dims]
             if self.dropout is not None:
-                x_s = self.dropout(x_s) #is x_s "call by referecne"? then this line should be removed.
-            logit = self.sample_fc(x_s).squeeze(-1) # [N, num_segs]
-            
+                x_s = self.dropout(x_s)
+            sampler_cls_score = self.sampler_head(x_s) # [N * num_segs, num_classes]
+            sampler_cls_score = sampler_cls_score.reshape(B, T, -1) # [N, num_segs, num_classes]
+            sampler_cls_score = sampler_cls_score.mean(1) # [N, num_classes]
+            losses['ce_loss'] = self.ce(sampler_cls_score, gt_labels) * (1 - self.loss_lambda)
 
         return losses
 
@@ -371,9 +368,6 @@ class FUllKDSampler2DRecognizer3D(BaseRecognizer):
                  use_sampler=False,
                  loss='kl',
                  simple=False,
-                 embed_dims=768,
-                 num_heads=12,
-                 num_layers=2,
                  num_segments=10,
                  num_classes=200,
                  num_test_segments=1,

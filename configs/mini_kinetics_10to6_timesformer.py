@@ -169,7 +169,7 @@ adjust_parameters = dict(base_ratio=0.0, min_ratio=0., by_epoch=False, style='st
 evaluation = dict(
     interval=5, metrics=['top_k_accuracy'], gpu_collect=True)
 load_from = 'modelzoo/timesformer_6x43x1_minik.pth'
-again_load = 'modelzoo/mini_kinetics_10to5_checkpoint.pth'
+#again_load = 'modelzoo/mini_kinetics_10to5_checkpoint.pth'
 resume_from = None
 workflow = [('train', 1)]
 find_unused_parameters = True

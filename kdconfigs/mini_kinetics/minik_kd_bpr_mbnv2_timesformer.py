@@ -1,10 +1,10 @@
 # model settings
-num_gpu = 2
+num_gpu = 1
 batch_size = 120
 total_seg = 10 
 sampled_seg = 6
-lr = 1e-5
-tcp = 29706
+lr = 1e-2
+tcp = 29709
 
 model = dict(
     type='KDSampler2DRecognizer3D',
@@ -15,7 +15,7 @@ model = dict(
     num_layers=0,
     num_segments=total_seg,
     num_test_segments=sampled_seg,
-    softmax=False,
+    softmax=True,
     return_logit=False,
     simple=False,
     temperature=0.3,

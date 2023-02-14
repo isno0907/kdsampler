@@ -1,15 +1,18 @@
 # model settings
 num_gpu = 1
-batch_size = 100
+lr = 1e-1
+batch_size = 120
 total_seg = 10 
 sampled_seg = 6
-base_lr = 1e-3
+tcp = 29703
 
 model = dict(
     type='KDSampler2DRecognizer3D',
     use_sampler=True,
     resize_px=128,
     loss='hinge',
+    ce_loss=True,
+    loss_lambda=0.99,
     gamma=0.03,
     num_layers=0,
     num_segments=total_seg,
@@ -165,7 +168,7 @@ dev_check = dict(
     input_format='NCTHW'
 )
 # optimizer
-optimizer = dict(type='AdamW', lr=(base_lr / 8) * (batch_size / 40 * num_gpu / 8), weight_decay=0.0001)
+optimizer = dict(type='SGD', lr=(lr / 8) * (batch_size / 40 * num_gpu / 8), momentum=0.9, weight_decay=0.0001)
 # this lr is used for 8 gpus
 optimizer_config = dict(grad_clip=dict(max_norm=40, norm_type=2))
 # learning policy
@@ -181,11 +184,11 @@ log_config = dict(
         dict(type='TensorboardLoggerHook'),
     ])
 # runtime settings
-dist_params = dict(backend='nccl', port=4689)
+dist_params = dict(backend='nccl', port=tcp)
 log_level = 'INFO'
-work_dir = './work_dirs/mini_kinetics_kd_hinge_mbnv2_timesformer'  # noqa: E501
+work_dir = './work_dirs/mini_kinetics_kd_hinge_ce_mbnv2_timesformer'  # noqa: E501
 adjust_parameters = dict(base_ratio=0.0, min_ratio=0., by_epoch=False, style='step')
-evaluation = dict(interval=1, metrics=['top_k_accuracy'])
+evaluation = dict(interval=1, metrics=['top_k_accuracy'], gpu_collect=True)
 
 # runtime settings
 checkpoint_config = dict(interval=5)

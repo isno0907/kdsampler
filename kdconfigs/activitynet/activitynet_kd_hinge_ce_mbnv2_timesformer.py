@@ -1,22 +1,37 @@
 # model settings
+num_gpu = 1
+lr = 1e-1
+batch_size = 120
+total_seg = 10 
+sampled_seg = 6
+tcp = 29708
+
 model = dict(
-    type='Sampler2DRecognizer3D',
-    num_segments=6,
+    type='KDSampler2DRecognizer3D',
     use_sampler=True,
-    bp_mode='tsn',
-    explore_rate=0.1,
     resize_px=128,
+    loss='hinge',
+    ce_loss=True,
+    loss_lambda=0.99,
+    gamma=0.03,
+    num_layers=0,
+    num_segments=total_seg,
+    num_test_segments=sampled_seg,
+    return_logit=False,
+    softmax=True,
+    temperature=0.3,
+    dropout_ratio=0.2,
     sampler=dict(
+        #type='FlexibleMobileNetV2TSM',
         type='MobileNetV2TSM',
+        #pretrained='mmcls://mobilenet_v2',
         pretrained='modelzoo/anet_mobilenetv2_tsm_sampler_checkpoint.pth',
-        is_sampler=True,
+        is_sampler=False,
         shift_div=10,
         num_segments=10,
-        total_segments=10),
+        total_segments=total_seg),
     backbone=dict(
         type='TimeSformer',
-        #pretrained=  # noqa: E251
-        #'https://download.openmmlab.com/mmaction/recognition/timesformer/vit_base_patch16_224.pth',  # noqa: E501
         num_frames=6,
         img_size=224,
         patch_size=16,
@@ -28,11 +43,15 @@ model = dict(
         norm_cfg=dict(type='LN', eps=1e-6),
         freeze=True
         ),
-    cls_head=dict(type='TimeSformerHead', num_classes=200, in_channels=768, frozen=True),
-    train_cfg = None,
-    test_cfg = dict(average_clips=None)
-
-    )
+    cls_head=dict(
+        type='TimeSformerHead',
+        num_classes=200, 
+        in_channels=768,
+        frozen=True,
+        ),
+    # model training and testing settings
+    train_cfg=None,
+    test_cfg=dict(average_clips='prob'))
 
 # model training and testing settings
 # dataset settings
@@ -47,46 +66,75 @@ img_norm_cfg = dict(
     mean=[127.5, 127.5, 127.5], std=[127.5, 127.5, 127.5], to_bgr=False)
 
 train_pipeline = [
-    dict(type='UniformSampleFrames', clip_len=10, num_clips=1),
+    dict(type='UniformSampleFrames', clip_len=total_seg, num_clips=1),
     dict(type='RawFrameDecode'),
     dict(type='RandomResizedCrop'),
     dict(type='Resize', scale=(224, 224), keep_ratio=False),
     dict(type='Flip', flip_ratio=0.5),
     dict(type='Normalize', **img_norm_cfg),
-    dict(type='FormatShape', input_format='NCHW'),
+    dict(type='FormatShape', input_format='NCTHW'),
     dict(type='Collect', keys=['imgs', 'label'], meta_keys=[]),
     dict(type='ToTensor', keys=['imgs', 'label'])
 ]
+"""
 val_pipeline = [
-    dict(type='UniformSampleFrames', clip_len=10, num_clips=1, test_mode=True),
+    dict(
+        type='SampleFrames',
+        clip_len=10,
+        frame_interval=43,
+        num_clips=1,
+        test_mode=True),
     dict(type='RawFrameDecode'),
-    # follow FrameExit
-    # https://github.com/Qualcomm-AI-research/FrameExit/blob/main/config/activitynet_inference_2d.yml#L20-L21
+    dict(type='Resize', scale=(-1, 256)),
+    dict(type='CenterCrop', crop_size=224),
+    dict(type='Normalize', **img_norm_cfg),
+    dict(type='FormatShape', input_format='NCTHW'),
+    dict(type='Collect', keys=['imgs', 'label'], meta_keys=[]),
+    dict(type='ToTensor', keys=['imgs', 'label'])
+]
+test_pipeline = [
+    dict(
+        type='SampleFrames',
+        clip_len=10,
+        frame_interval=43,
+        num_clips=1,
+        test_mode=True),
+    dict(type='RawFrameDecode'),
+    dict(type='Resize', scale=(-1, 256)),
+    dict(type='CenterCrop', crop_size=224),
+    dict(type='Normalize', **img_norm_cfg),
+    dict(type='FormatShape', input_format='NCTHW'),
+    dict(type='Collect', keys=['imgs', 'label'], meta_keys=[]),
+    dict(type='ToTensor', keys=['imgs', 'label'])
+]
+"""
+
+val_pipeline = [
+    dict(type='UniformSampleFrames', clip_len=total_seg, num_clips=1, test_mode=True),
+    dict(type='RawFrameDecode'),
     dict(type='Resize', scale=(-1, 224)),
     dict(type='CenterCrop', crop_size=224),
     dict(type='Normalize', **img_norm_cfg),
-    dict(type='FormatShape', input_format='NCHW'),
+    dict(type='FormatShape', input_format='NCTHW'),
     dict(type='Collect', keys=['imgs', 'label'], meta_keys=[]),
     dict(type='ToTensor', keys=['imgs'])
 ]
 test_pipeline = [
-    dict(type='UniformSampleFrames', clip_len=10, num_clips=1, test_mode=True),
+    dict(type='UniformSampleFrames', clip_len=total_seg, num_clips=1, test_mode=True),
     dict(type='RawFrameDecode'),
-    # follow FrameExit
-    # https://github.com/Qualcomm-AI-research/FrameExit/blob/main/config/activitynet_inference_2d.yml#L20-L21
     dict(type='Resize', scale=(-1, 224)),
     dict(type='CenterCrop', crop_size=224),
     dict(type='Normalize', **img_norm_cfg),
-    dict(type='FormatShape', input_format='NCHW'),
+    dict(type='FormatShape', input_format='NCTHW'),
     dict(type='Collect', keys=['imgs', 'label'], meta_keys=[]),
     dict(type='ToTensor', keys=['imgs'])
 ]
 
 data = dict(
-    videos_per_gpu=80,
-    workers_per_gpu=6,
-    val_dataloader=dict(videos_per_gpu=80, workers_per_gpu=6),
-    test_dataloader=dict(videos_per_gpu=80, workers_per_gpu=6),
+    videos_per_gpu=batch_size,
+    workers_per_gpu=5,
+    val_dataloader=dict(videos_per_gpu=batch_size, workers_per_gpu=4),
+    test_dataloader=dict(videos_per_gpu=batch_size, workers_per_gpu=4),
     train=dict(
         type=dataset_type,
         ann_file=ann_file_train,
@@ -106,13 +154,19 @@ data = dict(
         num_classes=200,
         data_prefix=data_root_val,
         pipeline=test_pipeline))
+dev_check = dict(
+    check = True,
+    size = 224,
+    input_format='NCTHW'
+)
 # optimizer
-optimizer = dict(type='SGD', lr=(0.001 / 8) * (80 / 16 * 1 / 8), momentum=0.9, weight_decay=0.0001)
+optimizer = dict(type='SGD', lr=(lr / 8) * (batch_size / 40 * num_gpu / 8), momentum=0.9, weight_decay=0.0001)
 # this lr is used for 8 gpus
 optimizer_config = dict(grad_clip=dict(max_norm=40, norm_type=2))
 # learning policy
-lr_config = dict(policy='CosineAnnealing', min_lr=0)
-total_epochs = 50
+#lr_config = dict(policy='CosineAnnealing', min_lr=0)
+lr_config = dict(policy='CosineAnnealing', warmup='linear', warmup_iters=1500, warmup_ratio=0.001, min_lr=0)
+total_epochs = 20
 checkpoint_config = dict(interval=1, max_keep_ckpts=5)
 
 log_config = dict(
@@ -122,15 +176,17 @@ log_config = dict(
         dict(type='TensorboardLoggerHook'),
     ])
 # runtime settings
-dist_params = dict(backend='nccl')
+dist_params = dict(backend='nccl', port=tcp)
 log_level = 'INFO'
-work_dir = './work_dirs/activitynet_10to6_timesformer'  # noqa: E501
+work_dir = './work_dirs/activitynet_kd_hinge_ce_mbnv2_timesformer'  # noqa: E501
 adjust_parameters = dict(base_ratio=0.0, min_ratio=0., by_epoch=False, style='step')
-evaluation = dict(
-    interval=5, metrics=['mean_average_precision'], gpu_collect=True)
-# directly port classification checkpoint from FrameExit
+evaluation = dict(interval=1, metrics=['mean_average_precision'],gpu_collect=True)
+
+# runtime settings
+checkpoint_config = dict(interval=5)
+
+#evaluation = dict(interval=1, metrics=['mean_average_precision'], gpu_collect=True)
 load_from = 'modelzoo/timesformer_6x100x1_anet.pth'
-#again_load = 'modelzoo/anet_10to6_checkpoint.pth'
 resume_from = None
 workflow = [('train', 1)]
 find_unused_parameters = True

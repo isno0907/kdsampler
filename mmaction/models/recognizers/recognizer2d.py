@@ -7,6 +7,55 @@ import torch.nn.functional as F
 from mmcv import ConfigDict
 import torch
 
+from torch import Tensor
+import torchvision.transforms as transforms
+from PIL import Image
+from einops import rearrange
+from itertools import combinations
+
+class PairwiseLoss(nn.Module):
+    def __init__(self, total_segment=10, sort='hinge', gamma=0) -> None:
+        super(PairwiseLoss, self).__init__()
+        self.total_segment = 10
+        self.sort = sort
+        self.gamma = gamma
+        self.topk = None
+        self.i_index = []
+        self.j_index = []
+        for i, j in list(combinations([i for i in range(total_segment)], 2)):
+            self.i_index.append(i)
+            self.j_index.append(j)
+    def forward(self, input: Tensor, target: Tensor) -> Tensor:
+        delta_input = input[:,self.i_index] - input[:,self.j_index]
+        delta_target = target[:, self.i_index] - target[:,self.j_index]
+        sign = torch.sign(delta_target)
+        delta_target = delta_target * sign
+        delta_input = delta_input * sign
+        if self.sort == 'hinge':
+            result = delta_target * torch.clamp(self.gamma - delta_input, min=0)
+            return result.sum(-1).mean()
+        elif self.sort == 'exp':
+            result = delta_target * torch.exp(self.gamma - delta_input)
+            return result.sum(-1).mean()
+        elif self.sort == 'log':
+            result = delta_target * torch.log(1 + torch.exp(self.gamma - delta_input))
+            return result.sum(-1).mean()
+        if self.sort == 'ahinge':
+            result = torch.clamp(self.gamma + delta_target - delta_input, min=0)
+            return result.sum(-1).mean()
+        elif self.sort == 'aexp':
+            result = torch.exp(self.gamma + delta_target- delta_input)
+            return result.sum(-1).mean()
+        elif self.sort == 'alog':
+            result = torch.log(1 + torch.exp(self.gamma + delta_target - delta_input))
+            return result.sum(-1).mean()
+        elif self.sort == 'bpr':
+            result = -torch.log(torch.sigmoid(delta_input))
+            return result.sum(-1).mean()
+        else:
+            raise("Pairwise Loss: Sort must be in ['hinge', 'exp', 'log', 'bpr] ")
+
+
 @RECOGNIZERS.register_module()
 class Recognizer2D(BaseRecognizer):
     """2D recognizer model framework."""
@@ -125,19 +174,22 @@ class KDSampler2DRecognizer2D(BaseRecognizer):
                  test_cfg=None,
                  use_sampler=False,
                  loss='kl',
-                 embed_dims=768,
-                 num_heads=12,
-                 num_layers=2,
+                 simple=False,
                  num_segments=10,
+                 num_classes=200,
                  num_test_segments=1,
-                 softmax=True,
+                 softmax=False,
+                 return_logit=True,
+                 temperature=1.0,
+                 gamma=0.0,
+                 dropout_ratio=0.5,
                  resize_px=None):
         super().__init__(backbone, cls_head, sampler, neck, train_cfg, test_cfg, use_sampler)
         
         if sampler is None:
             self.sampler = None
         self.resize_px=resize_px
-        assert loss in ['kl','mse']
+        assert loss in ['kl','mse','hinge','exp','log','bpr','bce']
         if loss == 'kl':
             self.loss = torch.nn.KLDivLoss(reduction='batchmean', log_target=True)
         elif loss == 'mse':

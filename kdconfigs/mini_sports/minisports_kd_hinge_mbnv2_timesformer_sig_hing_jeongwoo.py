@@ -3,26 +3,28 @@ num_gpu = 1
 batch_size = 100
 total_seg = 10 
 sampled_seg = 6
-base_lr = 1e-3
-
+base_lr = 1e-4
+"""
+Train된 sampler checkpoint.pth copy & paste 하고 rename
+"""
 model = dict(
     type='KDSampler2DRecognizer3D',
     use_sampler=True,
     resize_px=128,
     loss='hinge',
-    gamma=0.03,
+    gamma=0.5,
     num_layers=0,
     num_segments=total_seg,
     num_test_segments=sampled_seg,
     return_logit=False,
-    softmax=True,
-    temperature=0.3,
-    dropout_ratio=0.2,
+    softmax=False,
+    temperature=0.5,
+    dropout_ratio=0.0,
     sampler=dict(
         #type='FlexibleMobileNetV2TSM',
         type='MobileNetV2TSM',
         # pretrained='mmcls://mobilenet_v2',
-        pretrained='modelzoo/mini_kinetics_mobilenetv2_tsm_sampler_checkpoint.pth',
+        pretrained='modelzoo/mini_sports_mobilenetv2_tsm_sampler_checkpoint.pth',
         is_sampler=False,
         shift_div=10,
         num_segments=10,
@@ -165,7 +167,7 @@ dev_check = dict(
     input_format='NCTHW'
 )
 # optimizer
-optimizer = dict(type='AdamW', lr=(base_lr / 8) * (batch_size / 40 * num_gpu / 8), weight_decay=0.0001)
+optimizer = dict(type='SGD', lr=(base_lr / 8) * (batch_size / 40 * num_gpu / 8), momentum=0.9, weight_decay=0.0001)
 # this lr is used for 8 gpus
 optimizer_config = dict(grad_clip=dict(max_norm=40, norm_type=2))
 # learning policy
@@ -181,9 +183,9 @@ log_config = dict(
         dict(type='TensorboardLoggerHook'),
     ])
 # runtime settings
-dist_params = dict(backend='nccl', port=4689)
+dist_params = dict(backend='nccl', port=3303)
 log_level = 'INFO'
-work_dir = './work_dirs/mini_kinetics_kd_hinge_mbnv2_timesformer'  # noqa: E501
+work_dir = './search_workspace/mini_sportsO_kd_20_sigmoid_hinge0.5_x_1e-4_nodropout'  # noqa: E501
 adjust_parameters = dict(base_ratio=0.0, min_ratio=0., by_epoch=False, style='step')
 evaluation = dict(interval=1, metrics=['top_k_accuracy'])
 
@@ -191,7 +193,7 @@ evaluation = dict(interval=1, metrics=['top_k_accuracy'])
 checkpoint_config = dict(interval=5)
 
 #evaluation = dict(interval=1, metrics=['mean_average_precision'], gpu_collect=True)
-load_from = 'modelzoo/timesformer_6x43x1_minik.pth'
+load_from = 'modelzoo/timesformer_6x700x1_mini_sports.pth'
 resume_from = None
 workflow = [('train', 1)]
 find_unused_parameters = True

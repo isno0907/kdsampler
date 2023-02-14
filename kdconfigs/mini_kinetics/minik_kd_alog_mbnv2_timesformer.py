@@ -1,7 +1,7 @@
 # model settings
 num_gpu = 2
 lr = 1e-5
-batch_size = 120
+batch_size = 20
 total_seg = 10 
 sampled_seg = 6
 tcp = 29709

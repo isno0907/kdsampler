@@ -48,7 +48,7 @@ from einops import rearrange
 
 # config = "configs/single_anet_timesformer_6x100x1.py"
 # checkpoint = "modelzoo/timesformer_6x100x1_anet.pth"
-config = "kdconfigs/mini_kinetics/minik_kd_bpr_mbnv2_timesformer.py"
+config = "kdconfigs/mini_kinetics/minik_kd_alog_mbnv2_timesformer.py"
 checkpoint = "work_dirs/mini_kinetics_kd_bpr_mbnv2_timesformer/best_top1_acc_epoch_2.pth"
 
 
@@ -56,12 +56,12 @@ cfg = Config.fromfile(config)
 
 dataset = build_dataset(cfg.data.test, dict(test_mode=True))
 dataloader_setting = dict(
-    videos_per_gpu=cfg.data.get('videos_per_gpu', 1),
-    workers_per_gpu=cfg.data.get('workers_per_gpu', 1),
+    videos_per_gpu=cfg.data.get('videos_per_gpu', 20),
+    workers_per_gpu=cfg.data.get('workers_per_gpu', 20),
     dist=False,
     shuffle=False)
-dataloader_setting = dict(dataloader_setting,
-                            **cfg.data.get('test_dataloader', {}))
+# dataloader_setting = dict(dataloader_setting,
+#                             **cfg.data.get('test_dataloader', {}))
 data_loader = build_dataloader(dataset, **dataloader_setting)
 
 model = build_model(
