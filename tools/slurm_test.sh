@@ -9,7 +9,7 @@ CHECKPOINT=$4
 GPUS=${GPUS:-1}
 #GPUS_PER_NODE=${GPUS_PER_NODE:-8}
 GPUS_PER_NODE=$GPUS
-CPUS_PER_TASK=${CPUS_PER_TASK:-8}
+CPUS_PER_TASK=${CPUS_PER_TASK:-4}
 PY_ARGS=${@:5}  # Arguments starting from the fifth one are captured
 if [ ${PARTITION} == "a100" ]
 then

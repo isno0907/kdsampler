@@ -1,15 +1,15 @@
 # model settings
 total_seg = 10 
-sampled_seg = 5
+sampled_seg = 6
 model = dict(
     type='KDSampler2DRecognizer2D',
     use_sampler=True,
     resize_px=128,
     loss='mse',
-    num_layers=0,
     num_segments=total_seg,
     num_test_segments=sampled_seg,
     softmax=False,
+    return_logit=True,
     sampler=dict(
         type='MobileNetV2',
         #pretrained='modelzoo/task_resize_tsm_mobilenetv2_1x1x10_100e_coin_rgb_remap.pth',
@@ -125,7 +125,7 @@ log_config = dict(
         dict(type='TensorboardLoggerHook'),
     ])
 # runtime settings
-dist_params = dict(backend='nccl', port=29505)
+dist_params = dict(backend='nccl', port=29708)
 log_level = 'INFO'
 work_dir = './work_dirs/task_kd_mse_mbnv2_resnet50'  # noqa: E501
 adjust_parameters = dict(base_ratio=0.0, min_ratio=0., by_epoch=False, style='step')

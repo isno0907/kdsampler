@@ -4,7 +4,7 @@ lr = 1e-1
 batch_size = 120
 total_seg = 10 
 sampled_seg = 6
-tcp = 29703
+tcp = 29701
 
 model = dict(
     type='KDSampler2DRecognizer3D',
@@ -17,18 +17,17 @@ model = dict(
     num_layers=0,
     num_segments=total_seg,
     num_test_segments=sampled_seg,
+    num_classes=200,
     return_logit=False,
     softmax=True,
     temperature=0.3,
     dropout_ratio=0.2,
     sampler=dict(
         #type='FlexibleMobileNetV2TSM',
-        type='MobileNetV2TSM',
+        type='MobileNetV2',
         # pretrained='mmcls://mobilenet_v2',
         pretrained='modelzoo/mini_kinetics_mobilenetv2_tsm_sampler_checkpoint.pth',
         is_sampler=False,
-        shift_div=10,
-        num_segments=10,
         total_segments=total_seg),
     backbone=dict(
         type='TimeSformer',
@@ -63,62 +62,30 @@ ann_file_val = 'data/mini_kinetics/mini_kinetics_val_list_rawframes.txt'
 ann_file_test = 'data/mini_kinetics/mini_kinetics_val_list_rawframes.txt'
 img_norm_cfg = dict(
     mean=[127.5, 127.5, 127.5], std=[127.5, 127.5, 127.5], to_bgr=False)
-"""
-train_pipeline = [
-    dict(type='SampleFrames', clip_len=6, frame_interval=43, num_clips=1),
-    dict(type='RawFrameDecode'),
-    dict(type='RandomRescale', scale_range=(256, 320)),
-    dict(type='RandomCrop', size=224),
-    dict(type='Flip', flip_ratio=0.5),
-    dict(type='Normalize', **img_norm_cfg),
-    dict(type='FormatShape', input_format='NCTHW'),
-    dict(type='Collect', keys=['imgs', 'label'], meta_keys=[]),
-    dict(type='ToTensor', keys=['imgs', 'label'])
-]
-val_pipeline = [
-    dict(
-        type='SampleFrames',
-        clip_len=total_seg,
-        frame_interval=25,
-        num_clips=1,
-        test_mode=True),
-    dict(type='RawFrameDecode'),
-    dict(type='Resize', scale=(-1, 256)),
-    dict(type='CenterCrop', crop_size=224),
-    dict(type='Normalize', **img_norm_cfg),
-    dict(type='FormatShape', input_format='NCTHW'),
-    dict(type='Collect', keys=['imgs', 'label'], meta_keys=[]),
-    dict(type='ToTensor', keys=['imgs', 'label'])
-]
-test_pipeline = [
-    dict(
-        type='SampleFrames',
-        clip_len=total_seg,
-        frame_interval=25,
-        num_clips=1,
-        test_mode=True),
-    dict(type='RawFrameDecode'),
-    dict(type='Resize', scale=(-1, 256)),
-    dict(type='CenterCrop', crop_size=224),
-    dict(type='Normalize', **img_norm_cfg),
-    dict(type='FormatShape', input_format='NCTHW'),
-    dict(type='Collect', keys=['imgs', 'label'], meta_keys=[]),
-    dict(type='ToTensor', keys=['imgs', 'label'])
-]
-"""
 train_pipeline = [
     dict(type='UniformSampleFrames', clip_len=total_seg, num_clips=1),
     dict(type='RawFrameDecode'),
-    dict(type='RandomRescale', scale_range=(256, 320)),
-    dict(type='RandomCrop', size=224),
-    #dict(type='RandomResizedCrop'),
-    #dict(type='Resize', scale=(224, 224), keep_ratio=False),
+    dict(type='RandomResizedCrop'),
+    dict(type='Resize', scale=(224, 224), keep_ratio=False),
     dict(type='Flip', flip_ratio=0.5),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='FormatShape', input_format='NCTHW'),
     dict(type='Collect', keys=['imgs', 'label'], meta_keys=[]),
     dict(type='ToTensor', keys=['imgs', 'label'])
 ]
+
+#train_pipeline = [
+#    dict(type='UniformSampleFrames', clip_len=total_seg, num_clips=1),
+#    dict(type='RawFrameDecode'),
+#    dict(type='RandomCrop', size=224),
+#    #dict(type='RandomResizedCrop'),
+#    #dict(type='Resize', scale=(224, 224), keep_ratio=False),
+#    dict(type='Flip', flip_ratio=0.5),
+#    dict(type='Normalize', **img_norm_cfg),
+#    dict(type='FormatShape', input_format='NCTHW'),
+#    dict(type='Collect', keys=['imgs', 'label'], meta_keys=[]),
+#    dict(type='ToTensor', keys=['imgs', 'label'])
+#]
 val_pipeline = [
     dict(type='UniformSampleFrames', clip_len=total_seg, num_clips=1, test_mode=True),
     dict(type='RawFrameDecode'),

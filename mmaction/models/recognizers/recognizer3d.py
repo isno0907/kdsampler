@@ -205,7 +205,7 @@ class KDSampler2DRecognizer3D(BaseRecognizer):
         if self.return_logit and self.simple:
             raise("return_logit and simple cannot be applied simultaneously")
         self.temperature = temperature
-        if self.sampler.__class__.__name__ == 'MobileNetV2TSM':
+        if self.sampler.__class__.__name__ in ['MobileNetV2TSM','MobileNetV2']:
             self.input_dims = 1280
         else:
             self.input_dims = 2048 # 1280 Correction needed
@@ -241,6 +241,7 @@ class KDSampler2DRecognizer3D(BaseRecognizer):
         When FormatShape is NCTHW, imgs shape is [B, 1, C, T, H, W]
         """ 
         self.backbone.eval()
+        self.cls_head.eval()
         B, N, C, T, H, W = imgs.shape #imgs [B, N, C, T, H, W]
         imgs = rearrange(imgs, 'b n c t h w -> (b n) c t h w')
         imgs = imgs.transpose(1, 2).contiguous()

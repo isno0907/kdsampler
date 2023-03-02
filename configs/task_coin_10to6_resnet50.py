@@ -1,5 +1,6 @@
 # model settings
-num_seg = 8
+num_seg = 6
+batch_size = 120
 model = dict(
     type='Sampler2DRecognizer2D',
     num_segments=num_seg,
@@ -7,7 +8,6 @@ model = dict(
     bp_mode='tsn',
     explore_rate=0.1,
     resize_px=128,
-    reverse=True,
     sampler=dict(
         type='MobileNetV2TSM',
         pretrained='modelzoo/task_resize_tsm_mobilenetv2_1x1x10_100e_coin_rgb_remap.pth',
@@ -18,7 +18,7 @@ model = dict(
         ),
     backbone=dict(
         type='ResNet',
-        #pretrained='torchvision://resnet50',
+        pretrained='torchvision://resnet50',
         #torchvision_pretrain=False,
         #revise_keys=[('backbone.', '')],
         frozen_stages=5,
@@ -34,8 +34,6 @@ model = dict(
         dropout_ratio=0.5,
         init_std=0.001,
         is_shift=False,
-        #pretrained='modelzoo/step_r50_1x1x6.pth',
-        #revise_keys=[('cls_head.', '')],
         frozen=True,
         final_loss=False
         ))
@@ -90,10 +88,10 @@ test_pipeline = [
 ]
 
 data = dict(
-    videos_per_gpu=20,
+    videos_per_gpu=batch_size,
     workers_per_gpu=4,
-    val_dataloader=dict(videos_per_gpu=80, workers_per_gpu=4),
-    test_dataloader=dict(videos_per_gpu=80, workers_per_gpu=4),
+    val_dataloader=dict(videos_per_gpu=batch_size, workers_per_gpu=4),
+    test_dataloader=dict(videos_per_gpu=batch_size, workers_per_gpu=4),
     train=dict(
         type=dataset_type,
         ann_file=ann_file_train,
@@ -114,7 +112,7 @@ data = dict(
         data_prefix=data_root_val,
         pipeline=test_pipeline))
 # optimizer
-optimizer = dict(type='SGD', lr=(0.001 / 8) * (20 / 16 * 1 / 8), momentum=0.9, weight_decay=0.0001)
+optimizer = dict(type='SGD', lr=(0.001 / 8) * 1, momentum=0.9, weight_decay=0.0001)
 # this lr is used for 8 gpus
 optimizer_config = dict(grad_clip=dict(max_norm=40, norm_type=2))
 # learning policy
@@ -134,7 +132,7 @@ log_level = 'INFO'
 work_dir = './work_dirs/task_coin_10to6_resnet50'  # noqa: E501
 adjust_parameters = dict(base_ratio=0.0, min_ratio=0., by_epoch=False, style='step')
 evaluation = dict(
-    interval=1, metrics=['top_k_accuracy','mean_average_precision'], gpu_collect=True)
+    interval=1, metrics=['top_k_accuracy'], gpu_collect=True)
 # directly port classification checkpoint from FrameExit
 #load_from = 'modelzoo/step_resize_tsm_mobilenetv2_1x1x10_100e_coin_rgb.pth'
 load_from = 'modelzoo/task_r50_1x1x6.pth'

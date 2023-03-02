@@ -16,8 +16,8 @@ model = dict(
         ),
     backbone=dict(
         type='TimeSformer',
-        pretrained=  # noqa: E251
-        'https://download.openmmlab.com/mmaction/recognition/timesformer/vit_base_patch16_224.pth',  # noqa: E501
+        #pretrained=  # noqa: E251
+        #'https://download.openmmlab.com/mmaction/recognition/timesformer/vit_base_patch16_224.pth',  # noqa: E501
         num_frames=6,
         img_size=224,
         patch_size=16,
@@ -128,7 +128,7 @@ evaluation = dict(
     interval=1, metrics=['top_k_accuracy'], gpu_collect=True)
 # directly port classification checkpoint from FrameExit
 #load_from = 'modelzoo/step_resize_tsm_mobilenetv2_1x1x10_100e_coin_rgb.pth'
-load_from = 'modelzoo/task_timesformer_6x43x1_best_coin_rgb.pth'
+load_from = 'modelzoo/task_timesformer_6x43x1.pth'
 
 resume_from = None
 workflow = [('train', 1)]

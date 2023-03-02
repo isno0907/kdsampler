@@ -142,6 +142,8 @@ class Sampler2DRecognizer3D(BaseRecognizer):
         return selected_imgs, distribution, policy, sample_index, sample_probs
 
     def forward_sampler(self, imgs, num_batches, test_mode=False, **kwargs):
+        self.backbone.eval()
+        self.cls_head.eval()
         if self.max_testing_views is not None:
             total_views = imgs.shape[0]
             view_ptr = 0
@@ -304,10 +306,10 @@ class Sampler2DRecognizer3D(BaseRecognizer):
                 cls_scores.append(cls_score)
                 view_ptr += self.max_testing_views
             cls_score = torch.cat(cls_scores)
-        else:
+        else:# img B T C H W
             imgs, _, distribution, _, sample_index, _ = self.forward_sampler(imgs, num_batches * num_clips, test_mode=True)
             imgs = imgs.transpose(1, 2).contiguous()
-            x = self.extract_feat(imgs)
+            x = self.extract_feat(imgs) # B C T H W
             cls_score = self.cls_head(x)
         cls_score = self.average_clip(cls_score, num_clips)
         return cls_score.cpu().numpy()

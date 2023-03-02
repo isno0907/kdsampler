@@ -3,7 +3,7 @@
 CONFIG=$1
 CHECKPOINT=$2
 GPUS=$3
-PORT=${PORT:-29500}
+PORT=${PORT:-29508}
 
 PYTHONPATH="$(dirname $0)/..":$PYTHONPATH \
 # Arguments starting from the forth one are captured by ${@:4}

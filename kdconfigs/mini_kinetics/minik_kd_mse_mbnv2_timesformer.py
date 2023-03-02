@@ -1,8 +1,9 @@
 # model settings
 num_gpu = 1
-batch_size = 210
+batch_size = 120
 total_seg = 10 
 sampled_seg = 6
+tcp=29705
 model = dict(
     type='KDSampler2DRecognizer3D',
     use_sampler=True,
@@ -17,12 +18,10 @@ model = dict(
     temperature=0.2,
     sampler=dict(
         #type='FlexibleMobileNetV2TSM',
-        type='MobileNetV2TSM',
+        type='MobileNetV2',
         # pretrained='mmcls://mobilenet_v2',
         pretrained='modelzoo/mini_kinetics_mobilenetv2_tsm_sampler_checkpoint.pth',
         is_sampler=False,
-        shift_div=10,
-        num_segments=10,
         total_segments=total_seg),
     backbone=dict(
         type='TimeSformer',
@@ -177,7 +176,7 @@ log_config = dict(
         dict(type='TensorboardLoggerHook'),
     ])
 # runtime settings
-dist_params = dict(backend='nccl', port=29705)
+dist_params = dict(backend='nccl', port=tcp)
 log_level = 'INFO'
 work_dir = './work_dirs/mini_kinetics_kd_mse_mbnv2_timesformer'  # noqa: E501
 adjust_parameters = dict(base_ratio=0.0, min_ratio=0., by_epoch=False, style='step')

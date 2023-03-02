@@ -174,10 +174,12 @@ class KDSampler2DRecognizer2D(BaseRecognizer):
                  test_cfg=None,
                  use_sampler=False,
                  loss='kl',
+                 ce_loss=False,
+                 loss_lambda=1.0,
                  simple=False,
                  num_segments=10,
                  num_classes=200,
-                 num_test_segments=1,
+                 num_test_segments=6,
                  softmax=False,
                  return_logit=True,
                  temperature=1.0,
@@ -189,39 +191,66 @@ class KDSampler2DRecognizer2D(BaseRecognizer):
         if sampler is None:
             self.sampler = None
         self.resize_px=resize_px
-        assert loss in ['kl','mse','hinge','exp','log','bpr','bce']
+        assert loss in ['kl','mse','hinge','exp','log','ahinge','aexp','alog','bpr','bce']
         if loss == 'kl':
             self.loss = torch.nn.KLDivLoss(reduction='batchmean', log_target=True)
         elif loss == 'mse':
             self.loss = torch.nn.MSELoss()
+        elif loss == 'bce':
+            self.loss = torch.nn.BCELoss()
+            assert softmax == False
+            assert return_logit == False
+        else:
+            self.loss = PairwiseLoss(total_segment=num_segments, sort=loss, gamma=gamma)
+        self.ce_loss = ce_loss
+        self.loss_lambda = loss_lambda
+        self.loss_name = loss
         self.num_segments = num_segments
         self.num_test_segments = num_test_segments
+        self.num_classes = num_classes
         self.softmax = softmax
-        if sampler is None:
-            self.input_dims = 2048 # 1280 Correction needed
-        else:
+        self.simple = simple
+        self.return_logit = return_logit
+        if self.softmax and self.simple:
+            raise("softmax and simple cannot be applied simultaneously")
+        if self.return_logit and self.simple:
+            raise("return_logit and simple cannot be applied simultaneously")
+        self.temperature = temperature
+        if self.sampler.__class__.__name__ in ['MobileNetV2', 'MobileNetV2TSM', 'FlexibleMobileNetV2TSM']:
             self.input_dims = 1280
+        else:
+            self.input_dims = 2048 # 1280 Correction needed
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
-
         self.sample_fc = nn.Linear(self.input_dims, 1)
+        if self.ce_loss:
+            self.ce = torch.nn.CrossEntropyLoss()
+            self.sampler_head = nn.Linear(self.input_dims, self.num_classes)
+        self.dropout_ratio = dropout_ratio
+        if self.dropout_ratio != 0:
+            self.dropout = nn.Dropout(p=self.dropout_ratio)
+        else:
+            self.dropout = None
     
     def sample_forward(self, x_s, num_segs, test_mode=False):
         """Defines getting sample distribution"""
         x_s = torch.flatten(self.avg_pool(x_s), 1) # [N * num_segs, in_channels]
-        x_s = x_s.reshape(-1, num_segs, self.input_dims) # [N, num_segs, embed_dims]
+        # x_s = x_s.reshape(-1, num_segs, self.input_dims) # [N, num_segs, embed_dims]
+        if self.dropout is not None:
+            x_s = self.dropout(x_s)
         logit = self.sample_fc(x_s).squeeze(-1) # [N, num_segs]
-        if self.softmax or test_mode:
+        logit = logit.reshape(-1, num_segs)
+        if not self.return_logit:
+            logit = torch.sigmoid(logit)
+        if self.softmax:
             logit = F.softmax(logit, -1)
-        return logit   
+        return logit
 
     def forward_train(self, imgs, labels, **kwargs):
         """Defines the computation performed at every call when training."""
         self.backbone.eval()
         self.cls_head.eval()
-        batches = imgs.shape[0]
-        #imgs [N, num_segs, 3, H, W]
-        imgs = imgs.reshape((-1, ) + imgs.shape[2:])
-        #imgs [N * num_segs, 3, H, W]
+        batches = imgs.shape[0] #imgs [N, num_segs, 3, H, W]
+        imgs = imgs.reshape((-1, ) + imgs.shape[2:]) #imgs [N * num_segs, 3, H, W]
         num_segs = imgs.shape[0] // batches
 
         losses = dict()
@@ -234,37 +263,38 @@ class KDSampler2DRecognizer2D(BaseRecognizer):
                 x_s = self.sampler(F.interpolate(imgs, size=self.resize_px), num_segs).squeeze()
         else:
             x_s = x.clone()
-        
-        if hasattr(self, 'neck'):
-            x = [
-                each.reshape((-1, num_segs) +
-                             each.shape[1:]).transpose(1, 2).contiguous()
-                for each in x
-            ]
-            x, loss_aux = self.neck(x, labels.squeeze())
-            x = x.squeeze(2)
-            num_segs = 1
-            losses.update(loss_aux)
+    
         # making gt label
         # x = torch.flatten(self.cls_head.avg_pool(x), 1) # [N * num_segs, in_channels]        
         # cls_score = self.cls_head.fc_cls(x) # [N * num_segs, num_classes]
         cls_score = self.cls_head(x, 1, return_logit=True)
+        if not self.return_logit:
+            cls_score = cls_score.softmax(-1)
         cls_score = cls_score.reshape(batches, num_segs, -1) # [N, num_segs, num_classes]
         gt_labels = labels.squeeze()
-        gt_logit = []
-        for i in range(num_segs):
-            tmp = cls_score[:,i,:].clone() # [N, num_classes] logit
-            # if self.softmax:
-            #     tmp = F.log_softmax(tmp, -1) # [N, num_segs]
-            gt_logit.append(tmp[range(cls_score.shape[0]),gt_labels])
-        gt_logit = torch.stack(gt_logit, -1).to(cls_score.device) # [N, num_segs]
+        gt_logit = cls_score[range(batches),:,gt_labels] # [B, T]
         if self.softmax:
-            gt_logit = F.log_softmax(gt_logit, -1)
+            gt_logit = F.softmax(gt_logit/self.temperature, -1)
+        if self.simple:
+            simple_index = gt_logit.topk(3, dim=1)[1]
+            batch_index = torch.arange(batches).unsqueeze(-1).expand_as(simple_index)
+            gt_logit[:] = 0.0
+            gt_logit[batch_index, simple_index] = 1.0
+            # gt_logit[gt_logit >= 0.3] = 1.0
+            # gt_logit[gt_logit < 0.3] = 0.0
         # sampler dist
-        logit = self.sample_forward(x_s, num_segs)
-
-        losses['kd_loss'] = self.loss(logit, gt_logit)
-        # losses.update(loss_cls)
+        logit = self.sample_forward(x_s, num_segs) # [N, num_segs]
+        losses[f'{self.loss_name}_loss'] = self.loss(logit, gt_logit) * self.loss_lambda
+        losses['logit_min'] = logit.min(-1)[0].mean(0)
+        losses['logit_max'] = logit.max(-1)[0].mean(0)
+        if self.ce_loss:
+            x_s = torch.flatten(self.avg_pool(x_s), 1) # [N * num_segs, in_channels]
+            if self.dropout is not None:
+                x_s = self.dropout(x_s)
+            sampler_cls_score = self.sampler_head(x_s) # [N * num_segs, num_classes]
+            sampler_cls_score = sampler_cls_score.reshape(batches, num_segs, -1) # [N, num_segs, num_classes]
+            sampler_cls_score = sampler_cls_score.mean(1) # [N, num_classes]
+            losses['ce_loss'] = self.ce(sampler_cls_score, gt_labels) * (1 - self.loss_lambda)
 
         return losses
 
@@ -279,9 +309,9 @@ class KDSampler2DRecognizer2D(BaseRecognizer):
         # x = self.extract_feat(imgs) # [N * num_segs, in_channels, h, w]
         if self.sampler is not None:
             if self.resize_px is None:
-                x_s = self.sampler(imgs).squeeze()
+                x_s = self.sampler(imgs, num_segs).squeeze()
             else:
-                x_s = self.sampler(F.interpolate(imgs, size=self.resize_px)).squeeze()
+                x_s = self.sampler(F.interpolate(imgs, size=self.resize_px), num_segs).squeeze()
         else:
             x_s = self.extract_feat(imgs) # [N * num_segs, in_channels, h, w]
         

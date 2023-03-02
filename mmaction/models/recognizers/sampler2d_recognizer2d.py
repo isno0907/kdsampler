@@ -62,40 +62,35 @@ class Sampler2DRecognizer2D(BaseRecognizer):
                  calc_mode='all',
                  reward_kind=1,
                  num_segments=4,
-                 ori_segments=10,
                  resize_px=None,
                  num_test_segments=None,
                  use_sampler=False,
                  explore_rate=1.,
                  clamp_range=None,
                  num_clips=1,
-                 cal_number=None,
-                 reverse=False):
+                 cal_number=None):
         super().__init__(backbone, cls_head, sampler, neck, train_cfg, test_cfg, use_sampler)
         self.cal_number = cal_number
         self.clamp_range = clamp_range
         self.resize_px = resize_px
         self.num_segments = num_segments
-        self.ori_segments = ori_segments
         self.bp_mode = bp_mode
         self.num_clips = num_clips
         self.calc_mode = calc_mode
         self.reward_kind = reward_kind
-        self.reverse = reverse
-        # if self.reverse:
-        #     self.num_segments = self.ori_segments - self.num_segments
         assert bp_mode in ['gradient_policy', 'tsn', 'random', 'max']
         assert calc_mode in ['approximate', 'all']
-        if self.num_segments <= 9:
+        if self.num_segments <= 8:
             self.permute_index = list(permutations(list(range(self.num_segments)), self.num_segments))
             self.index_length = len(self.permute_index)
         if num_test_segments is None:
-            self.num_test_segments = self.num_segments
+            self.num_test_segments = num_segments
         else:
-            self.num_test_segments = self.num_test_segments
+            self.num_test_segments = num_test_segments
         self.explore_rate = explore_rate
 
     def sample(self, imgs, probs, test_mode=False, bp_mode='gradient_policy'):
+
         if test_mode:
             num_batches, original_segments = probs.shape
             sample_index = probs.topk(self.num_test_segments, dim=1)[1]
@@ -119,8 +114,6 @@ class Sampler2DRecognizer2D(BaseRecognizer):
                 distribution = probs
                 policy = None
             elif bp_mode == 'tsn':
-                # if self.reverse:
-                #     self.num_segments = 10 - self.num_segments
                 num_batches, original_segments = probs.shape
                 num_len = original_segments // self.num_segments
                 base_offset = torch.linspace(0, original_segments - num_len,
@@ -131,8 +124,6 @@ class Sampler2DRecognizer2D(BaseRecognizer):
                 policy = None
                 batch_inds = torch.arange(num_batches).unsqueeze(-1).expand_as(sample_index)
                 sample_probs = probs[batch_inds, sample_index]
-                # if self.reverse:
-                #     self.num_segments = 10 - self.num_segments
             elif bp_mode == 'random':
                 num_batches, original_segments = probs.shape
                 sample_index = []
@@ -148,14 +139,6 @@ class Sampler2DRecognizer2D(BaseRecognizer):
         # num_batches, num_segments
         num_batches = sample_index.shape[0]
         batch_inds = torch.arange(num_batches).unsqueeze(-1).expand_as(sample_index)
-        # if self.reverse and bp_mode == 'gradient_policy':
-        #     tmp = torch.arange(original_segments).to(sample_index.device)
-        #     rs_index = torch.zeros([num_batches, original_segments-self.num_segments]).to(sample_index.device).to(sample_index.dtype)
-        #     batch_inds = torch.arange(num_batches).unsqueeze(-1).expand_as(rs_index)
-        #     for i in range(num_batches):
-        #         rs_index[i] = delete(tmp, sample_index[i][:self.num_segments], 0)
-        #     sample_index = rs_index
-        #     sample_probs = probs[batch_inds, sample_index]
         selected_imgs = imgs[batch_inds, sample_index]
         return selected_imgs, distribution, policy, sample_index, sample_probs
 
@@ -165,15 +148,9 @@ class Sampler2DRecognizer2D(BaseRecognizer):
         else:
             probs = self.sampler(F.interpolate(imgs, size=self.resize_px))
             assert imgs.shape[-1] == 224
-        if self.reverse:
-           probs = F.softmax(1 - probs, -1)
         imgs = imgs.reshape((num_batches, -1) + (imgs.shape[-3:]))
-        
+
         selected_imgs, distribution, policy, sample_index, sample_probs = self.sample(imgs, probs, test_mode)
-        if test_mode:
-            return selected_imgs, selected_imgs, distribution, policy, sample_index, sample_probs
-        #except:
-        #    raise ValueError(probs)
         bs_imgs, bs_distribution, bs_policy, bs_sample_index, bs_sample_probs = self.sample(imgs, probs, test_mode,
                                                                                             self.bp_mode)
 
@@ -361,10 +338,10 @@ class Sampler2DRecognizer2D(BaseRecognizer):
         x = self.extract_feat(imgs)
         cls_score = self.cls_head(x, num_segs)
         cls_score = self.average_clip(cls_score, num_clips_crops)
-        return cls_score
+        return cls_score.cpu().numpy()
 
     def forward_test(self, imgs, **kwargs):
-        return self._do_test(imgs, **kwargs).cpu().numpy()
+        return self._do_test(imgs, **kwargs)
 
     def forward_gradcam(self, imgs):
         pass
