@@ -3,7 +3,7 @@
 a. Create a conda virtual environment and activate it.
 
 ```shell
-conda create -n kdsampler python=3.6.13 -y
+conda create -n kdsampler python=3.9.13 -y
 conda activate kdsampler
 ```
 
